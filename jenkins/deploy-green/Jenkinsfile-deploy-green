@@ -21,7 +21,6 @@ pipeline {
     }
     environment {
         PATH = "$HOME/.local/bin:$PATH"
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         APP_MANIFESTS_PATH = "jenkins/app-manifests"
     }
     stages {
@@ -36,69 +35,77 @@ pipeline {
                 '''
             }
         }
-           stage('Build Docker Image') {
-                steps {
-                    container('docker') {
-                        script {
-                            sh "docker build -t $DOCKERHUB_CREDENTIALS_USR/blue-green-app:${env.BUILD_NUMBER} ."
-                            sh "NEW_VERSION=${env.BUILD_NUMBER}"
-                            sh "sed -i 's|\${NEW_VERSION}|${env.BUILD_NUMBER}|g' $APP_MANIFESTS_PATH/green-deployment.yaml"
-                        }
-                    }
-                }
-            }
 
-            stage ('Deploy Green') {
-                steps {
-                    sh "kubectl apply -f $APP_MANIFESTS_PATH/green-deployment.yaml -n default"
-                    sh "kubectl apply -f $APP_MANIFESTS_PATH/green-service.yaml -n default"
-                }
-            }
-    
-            stage('Login and Push to Dockerhub') {
-                steps {
-                    container('docker') {
-                        script {
-                            sh "echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin"
-                            sh "docker push $DOCKERHUB_CREDENTIALS_USR/blue-green-app:${env.BUILD_NUMBER}"
-                        }
-                    }
-                }
-            }
+        stage('Switch Traffic To Green') {
+          steps {
+            script {
+                  // Update app-service selector to point to green deployment
+                  sh '''
+                      kubectl patch service app-service -n default -p '{"spec":{"selector":{"version":"green"}}}'
+                  '''
+                  
+                  def nodeIP = sh(
+                      script: "kubectl get nodes -n default -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
+                      returnStdout: true
+                  ).trim()
+                  
+                  def servicePort = sh(
+                      script: "kubectl get svc app-service -n default -o jsonpath='{.spec.ports[0].nodePort}'",
+                      returnStdout: true
+                  ).trim()
 
-            stage('Get Access URLs') {
-                steps {
-                    script {
-                        def nodeIP = sh(
-                        script: "kubectl get nodes -n default -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    def blueNodePort = sh(
-                        script: "kubectl get svc app-service -n default -o jsonpath='{.spec.ports[0].nodePort}'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    def greenNodePort = sh(
-                        script: "kubectl get svc green-service -n default -o jsonpath='{.spec.ports[0].nodePort}'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "Application URLs:"
-                    echo "Blue (Current): http://${nodeIP}:${blueNodePort}"
-                    echo "Green (New): http://${nodeIP}:${greenNodePort}"
-                    }
+                  echo "Traffic switched to green deployment"
+                  echo "Please verify the application at: http://${nodeIP}:${servicePort}"
                 }
             }
         }
 
-            
+        stage('Manual Approval') {
+            steps {
+                script {                    
+                    def userInput = input(
+                      message: 'Verify the green deployment and choose to proceed or rollback',
+                      parameters: [
+                          choice(
+                              name: 'ACTION',
+                              choices: ['proceed', 'rollback'],
+                              description: 'Select action to take'
+                          )
+                      ]
+                  )
+                    
+                   if (userInput == 'proceed') {
+                      echo "Proceeding with deployment finalization..."
+                      
+                      // Get green deployment image
+                      def greenImage = sh(
+                          script: "kubectl get deployment green-deployment -n default -o jsonpath='{.spec.template.spec.containers[0].image}'",
+                          returnStdout: true
+                      ).trim() 
 
-    post {
-        always {
-            container('docker') {
-                script {
-                    sh "docker logout"
+                    // Update blue deployment with green image
+                      sh """
+                          kubectl set image deployment/app-deployment demo-app=${greenImage} -n default
+                          kubectl patch service app-service -p -n default '{"spec":{"selector":{"version":"blue"}}}'
+                          
+                          # Wait for blue deployment to be ready
+                          kubectl rollout status deployment/app-deployment -n default
+                          
+                          # Clean up green resources
+                          kubectl delete deployment green-deployment -n default
+                          kubectl delete service green-service -n default
+                      """
+                      
+                      echo "Deployment completed successfully. Traffic restored to blue deployment with new image."
+                  } else {
+                    echo "Rolling back..."
+                      sh """
+                          kubectl patch service app-service -n default -p '{"spec":{"selector":{"version":"blue"}}}'
+                          kubectl delete deployment green-deployment -n default
+                          kubectl delete service green-service -n default
+                      """
+                      echo "Rollback completed. Traffic restored to blue deployment."
+                  }
                 }
             }
         }
