@@ -4,7 +4,7 @@ const app = express();
 const port = 3000;
 
 app.get('/', (req, res) => {
-  res.send('This is the green version!');
+  res.send('This is the blue version!');
 });
 
 app.listen(port, () => {
