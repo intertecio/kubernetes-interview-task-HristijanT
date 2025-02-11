@@ -1,0 +1,28 @@
+.
+├── app
+│   ├── package.json
+│   ├── package-lock.json
+│   └── src
+│       └── index.js
+├── Dockerfile
+├── jenkins
+│   ├── app-manifests
+│   │   ├── app-deployment.yaml
+│   │   ├── app-service.yaml
+│   │   ├── green-deployment.yaml
+│   │   └── green-service.yaml
+│   ├── deploy-green
+│   │   └── Jenkinsfile-deploy-green
+│   ├── jenkins-manifests
+│   │   ├── jenkins-namespace.yaml
+│   │   ├── jenkins-sa.yaml
+│   │   ├── jenkins-values.yaml
+│   │   └── jenkins-volume.yaml
+│   └── switch-to-green
+│       └── Jenkinsfile-switch-to-green
+├── kubernetes
+│   └── blue-green-deployment
+├── project_structure.txt
+└── README.md
+
+9 directories, 16 files
