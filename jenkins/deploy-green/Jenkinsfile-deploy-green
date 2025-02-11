@@ -22,6 +22,7 @@ pipeline {
     environment {
         PATH = "$HOME/.local/bin:$PATH"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        APP_MANIFESTS_PATH = "jenkins/app-manifests"
     }
     stages {
         stage('Setup Kubectl') {
@@ -41,7 +42,7 @@ pipeline {
                         script {
                             sh "docker build -t $DOCKERHUB_CREDENTIALS_USR/blue-green-app:${env.BUILD_NUMBER} ."
                             sh "NEW_VERSION=${env.BUILD_NUMBER}"
-                            sh "sed -i 's|\${NEW_VERSION}|${env.BUILD_NUMBER}|g' green-deployment.yaml"
+                            sh "sed -i 's|\${NEW_VERSION}|${env.BUILD_NUMBER}|g' $APP_MANIFESTS_PATH/green-deployment.yaml"
                         }
                     }
                 }
@@ -49,8 +50,8 @@ pipeline {
 
             stage ('Deploy Green') {
                 steps {
-                    sh "kubectl apply -f green-deployment.yaml -n default"
-                    sh "kubectl apply -f green-service.yaml -n default"
+                    sh "kubectl apply -f $APP_MANIFESTS_PATH/green-deployment.yaml -n default"
+                    sh "kubectl apply -f $APP_MANIFESTS_PATH/green-service.yaml -n default"
                 }
             }
     
