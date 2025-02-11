@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: demo-app
-        image: rikix/blue-green-app:1.0
+        image: ${DOCKERHUB_USERNAME}/blue-green-app:1
         ports:
         - containerPort: 3000
         resources:
