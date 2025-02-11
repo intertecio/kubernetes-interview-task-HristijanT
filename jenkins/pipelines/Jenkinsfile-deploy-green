@@ -22,7 +22,7 @@ pipeline {
     environment {
         PATH = "$HOME/.local/bin:$PATH"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        APP_MANIFESTS_PATH = "jenkins/app-manifests"
+        APP_MANIFESTS_PATH = "manifests/app"
     }
     stages {
         stage('Setup Kubectl') {

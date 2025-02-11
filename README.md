@@ -85,7 +85,7 @@ This pipeline switches traffic to the Green version and includes a manual approv
 - The project could be adapted to run on cloud providers like:
   - **AWS EKS (Elastic Kubernetes Service)**
     - Replace Minikube with EKS cluster
-    - Use AWS Load Balancer instead of NodePort services
+    - Use AWS Load Balancer Controller instead of NodePort services
     - Integrate with AWS ECR instead of DockerHub
     - Utilize AWS Secrets Manager for credentials
 
@@ -94,4 +94,3 @@ This pipeline switches traffic to the Green version and includes a manual approv
   - Built-in monitoring and logging
   - Managed Kubernetes service
   - Integration with cloud native services
-  - Production-grade security features
