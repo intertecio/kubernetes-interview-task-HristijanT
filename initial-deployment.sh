@@ -29,14 +29,16 @@ else
     echo "Minikube is already running"
 fi
 
+APP_MANIFESTS_PATH="manifests/app"
+
 # Create temporary deployment file with replaced username
 echo "Preparing deployment files..."
-sed "s|\${DOCKERHUB_USERNAME}|${DOCKERHUB_USERNAME}|g" jenkins/app-manifests/app-deployment.yaml > app-deployment-temp.yaml
+sed "s|\${DOCKERHUB_USERNAME}|${DOCKERHUB_USERNAME}|g" $APP_MANIFESTS_PATH/app-deployment.yaml > app-deployment-temp.yaml
 
 # Deploy initial application
 echo "Deploying initial application..."
 kubectl apply -f app-deployment-temp.yaml -n default
-kubectl apply -f jenkins/app-manifests/app-service.yaml -n default
+kubectl apply -f $APP_MANIFESTS_PATH/app-service.yaml -n default
 
 # Clean up temporary file
 rm app-deployment-temp.yaml
@@ -48,6 +50,9 @@ kubectl wait --for=condition=available deployment/app-deployment -n default --ti
 NODE_IP=$(minikube ip)
 NODE_PORT=$(kubectl get svc app-service -o jsonpath='{.spec.ports[0].nodePort}')
 echo "Application is available at: http://${NODE_IP}:${NODE_PORT}"
+
+# Unset environment variables
+unset DOCKERHUB_USERNAME DOCKERHUB_PASSWORD
 
 # Log out from Docker Hub
 docker logout
