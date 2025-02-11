@@ -1,0 +1,105 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+                apiVersion: v1
+                kind: Pod
+                spec:
+                  containers:
+                  - name: docker
+                    image: docker:dind
+                    securityContext:
+                      privileged: true
+                    volumeMounts:
+                      - name: dind-storage
+                        mountPath: /var/lib/docker
+                  volumes:
+                    - name: dind-storage
+                      emptyDir: {}
+            '''
+        }
+    }
+    environment {
+        PATH = "$HOME/.local/bin:$PATH"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+    }
+    stages {
+        stage('Setup Kubectl') {
+            steps {
+                sh 'curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"'
+                sh "chmod +x ./kubectl"
+                sh '''
+                mkdir -p $HOME/.local/bin
+                mv kubectl $HOME/.local/bin/kubectl
+                chmod +x $HOME/.local/bin/kubectl
+                '''
+            }
+        }
+           stage('Build Docker Image') {
+                steps {
+                    container('docker') {
+                        script {
+                            sh "docker build -t $DOCKERHUB_CREDENTIALS_USR/blue-green-app:${env.BUILD_NUMBER} ."
+                            sh "NEW_VERSION=${env.BUILD_NUMBER}"
+                            sh "sed -i 's|\${NEW_VERSION}|${env.BUILD_NUMBER}|g' green-deployment.yaml"
+                        }
+                    }
+                }
+            }
+
+            stage ('Deploy Green') {
+                steps {
+                    sh "kubectl apply -f green-deployment.yaml -n default"
+                    sh "kubectl apply -f green-service.yaml -n default"
+                }
+            }
+    
+            stage('Login and Push to Dockerhub') {
+                steps {
+                    container('docker') {
+                        script {
+                            sh "echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin"
+                            sh "docker push $DOCKERHUB_CREDENTIALS_USR/blue-green-app:${env.BUILD_NUMBER}"
+                        }
+                    }
+                }
+            }
+
+            stage('Get Access URLs') {
+                steps {
+                    script {
+                        def nodeIP = sh(
+                        script: "kubectl get nodes -n default -o jsonpath='{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    def blueNodePort = sh(
+                        script: "kubectl get svc app-service -n default -o jsonpath='{.spec.ports[0].nodePort}'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    def greenNodePort = sh(
+                        script: "kubectl get svc green-service -n default -o jsonpath='{.spec.ports[0].nodePort}'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "Application URLs:"
+                    echo "Blue (Current): http://${nodeIP}:${blueNodePort}"
+                    echo "Green (New): http://${nodeIP}:${greenNodePort}"
+                    }
+                }
+            }
+        }
+
+            
+
+    post {
+        always {
+            container('docker') {
+                script {
+                    sh "docker logout"
+                }
+            }
+        }
+    }
+}
